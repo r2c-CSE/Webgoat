@@ -1,29 +1,57 @@
 version: 2.1
+
 workflows:
-  semgrep:
+  version: 2
+  my_workflow:
     jobs:
+      - build_maven_dependency_tree:
+          context: maven
       - semgrep-full-scan:
+          requires:
+            - build_maven_dependency_tree
           filters:
             branches:
               only: main
           context:
             - semgrep
       - semgrep-diff-scan:
+          requires:
+            - build_maven_dependency_tree
           filters:
             branches:
               ignore: main
           context:
             - semgrep
+
 jobs:
+  build_maven_dependency_tree:
+    docker:
+      - image: cimg/openjdk:17.0  # Adjust as needed
+    steps:
+      - checkout
+      - run:
+          name: Generate Maven Dependency Tree
+          command: mvn dependency:tree -DoutputFile=maven_dep_tree.txt
+      - persist_to_workspace:
+          root: .  # This saves the current working directory (where maven_dep_tree.txt is generated)
+          paths:
+            - maven_dep_tree.txt  # This is the file we want to persist to the workspace
+
   semgrep-full-scan:
     docker:
       - image: returntocorp/semgrep
     steps:
       - checkout
+      - attach_workspace:
+          at: /workspace  # This attaches the workspace at the specified directory
       - run:
-          name: "Semgrep full scan"
+          name: "Semgrep full scan with Maven Dependency Tree"
           command: |
+            # Example command to use maven_dep_tree.txt
+            echo "Checking Maven Dependency Tree file"
+            cat /workspace/maven_dep_tree.txt
             semgrep ci
+
   semgrep-diff-scan:
     parameters:
       default_branch:
@@ -33,6 +61,8 @@ jobs:
       - image: returntocorp/semgrep
     steps:
       - checkout
+      - attach_workspace:
+          at: /workspace  # This attaches the workspace at the specified directory
       - run: 
           name: Semgrep diff scan
           environment: 
